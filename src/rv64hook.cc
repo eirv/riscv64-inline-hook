@@ -97,7 +97,7 @@ HookHandle* DoHook(func_t address,
   }
   auto info = HookInfo::Lookup(address);
   if (info && info->root_handle) [[likely]] {
-    info->root_handle->UnhookAll();
+    info->root_handle->UnhookAllExt();
   }
 }
 
