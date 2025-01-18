@@ -52,17 +52,17 @@ HookHandle* DoHook(func_t address,
     if (!trampoline) {
       return nullptr;
     }
-    auto type = GetSuggestedTrampolineType(address, trampoline);
+    auto type = Trampoline::GetSuggestedTrampolineType(address, trampoline);
 
     void* relocated = nullptr;
-    auto overwrite_size =
-        InstructionRelocator::Relocate(address, GetFirstTrampolineSize(type), &relocated);
+    auto overwrite_size = InstructionRelocator::Relocate(
+        address, Trampoline::GetFirstTrampolineSize(type), &relocated);
     if (overwrite_size == 0) [[unlikely]] {
       return nullptr;
     }
 
     info = HookInfo::Create(address, trampoline, is_user_alloc, relocated, overwrite_size);
-    WriteFirstTrampoline(address, trampoline, type);
+    Trampoline::WriteFirstTrampoline(address, trampoline, type);
   }
   return info->NewHookHandle(hook, pre_handler, post_handler, data, user_backup_addr);
 }

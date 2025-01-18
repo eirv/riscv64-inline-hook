@@ -18,13 +18,9 @@
 
 #include "trampoline.h"
 
-#define protected public
 #include "berberis/assembler/rv64i.h"
-#undef protected
 
 namespace rv64hook {
-
-using berberis::rv64i::Assembler;
 
 static constexpr uint16_t kWideTrampoline[] = {
     // auipc t3, 0
@@ -37,7 +33,11 @@ static constexpr uint16_t kWideTrampoline[] = {
     0x8e02,
 };
 
-void Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v) {
+class Assembler : public berberis::rv64i::Assembler {
+  friend class Trampoline;
+};
+
+void Trampoline::Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v) {
   auto base = v >> 12;
   auto add = static_cast<int32_t>(v & ~0xFFFFF000);
   if (add >= 0x800) {
@@ -60,7 +60,7 @@ void Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v) {
   *reinterpret_cast<void**>(address) = *reinterpret_cast<void**>(code);
 }
 
-TrampolineType GetSuggestedTrampolineType(func_t address, void* target) {
+TrampolineType Trampoline::GetSuggestedTrampolineType(func_t address, void* target) {
   auto a = reinterpret_cast<uintptr_t>(address);
   auto b = reinterpret_cast<uintptr_t>(target);
   auto off = static_cast<intptr_t>(b - a);
@@ -74,7 +74,7 @@ TrampolineType GetSuggestedTrampolineType(func_t address, void* target) {
   } else return TrampolineType::kWide;
 }
 
-int GetFirstTrampolineSize(TrampolineType type) {
+int Trampoline::GetFirstTrampolineSize(TrampolineType type) {
   switch (type) {
     case TrampolineType::kPC20:
       return 4;
@@ -86,7 +86,7 @@ int GetFirstTrampolineSize(TrampolineType type) {
   }
 }
 
-void WriteFirstTrampoline(func_t address, void* target, TrampolineType type) {
+void Trampoline::WriteFirstTrampoline(func_t address, void* target, TrampolineType type) {
   size_t size = 0;
   switch (type) {
     case TrampolineType::kPC20: {

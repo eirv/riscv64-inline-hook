@@ -61,10 +61,16 @@ struct TrampolineData {
   [[maybe_unused]] uint16_t post_handlers;
 };
 
-TrampolineType GetSuggestedTrampolineType(func_t address, void* target);
+class Trampoline {
+ public:
+  static TrampolineType GetSuggestedTrampolineType(func_t address, void* target);
 
-int GetFirstTrampolineSize(TrampolineType type);
+  static int GetFirstTrampolineSize(TrampolineType type);
 
-void WriteFirstTrampoline(func_t address, void* target, TrampolineType type);
+  static void WriteFirstTrampoline(func_t address, void* target, TrampolineType type);
+
+ private:
+  static void Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v)
+};
 
 }  // namespace rv64hook
