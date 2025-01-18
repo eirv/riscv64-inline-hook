@@ -106,6 +106,7 @@ void do_hook() {
 
 ## 致谢
  * [berberis](https://android.googlesource.com/platform/frameworks/libs/binary_translation)
+ * [sifive-libc](https://github.com/sifive/sifive-libc)
 
 ## 许可证
 ![LGPL v3](https://www.gnu.org/graphics/lgplv3-with-text-154x68.png)
