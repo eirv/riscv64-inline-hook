@@ -164,7 +164,6 @@ void HookHandleExt::UnhookExt() {
   if (info->handle_count == 1) {
     delete this;
     info->Unhook();
-    delete info;
     return;
   } else info->handle_count--;
 
@@ -212,7 +211,6 @@ void HookHandleExt::UnhookAllExt() {
     delete handle;
     if (!next) {
       info->Unhook();
-      delete info;
       break;
     }
     handle = next;
