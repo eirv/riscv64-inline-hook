@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("rv64hook")
 
+enable_language(ASM)
+
 set(CMAKE_CXX_STANDARD 20)
 
 set(RV64HOOK_SOURCES
@@ -12,7 +14,8 @@ set(RV64HOOK_SOURCES
         src/logger.cc
         src/memory_allocator.cc
         src/scoped_rwx_memory.cc
-        src/trampoline.cc)
+        src/trampoline.cc
+        src/libc/memcpy_vext.S)
 
 add_subdirectory(external/berberis)
 

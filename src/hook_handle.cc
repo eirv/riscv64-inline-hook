@@ -21,6 +21,7 @@
 #include <cstring>
 
 #include "hook_locker.h"
+#include "libc/libc.h"
 #include "memory_allocator.h"
 
 namespace rv64hook {
@@ -51,7 +52,7 @@ HookInfo* HookInfo::Create(func_t address,
   info->relocated = relocated;
   info->handle_count = 0;
   info->function_backup_size = function_backup_size;
-  memcpy(info->function_backup, address, function_backup_size);
+  rv64hook_libc_memcpy(info->function_backup, address, function_backup_size);
   return info;
 }
 
@@ -110,7 +111,7 @@ TrampolineData* HookInfo::GetTrampolineData() const {
 }
 
 void HookInfo::Unhook() {
-  memcpy(address, function_backup, function_backup_size);
+  rv64hook_libc_memcpy(address, function_backup, function_backup_size);
   __builtin___clear_cache(static_cast<char*>(address),
                           static_cast<char*>(address) + function_backup_size);
 
