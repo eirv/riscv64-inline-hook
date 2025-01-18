@@ -218,7 +218,8 @@ class ScopedRWXMemory {
   static constexpr int kWrite = 0x2;
   static constexpr int kExec = 0x4;
 
-  inline explicit ScopedRWXMemory(auto address)
+  template <typename Func>
+  inline explicit ScopedRWXMemory(Func address)
       : ScopedRWXMemory(reinterpret_cast<func_t>(address), kRead | kExec) {
   }
 
