@@ -108,7 +108,7 @@ class RegisterContext {
   freg_t ft8, ft9, ft10, ft11;
 
   template <typename T = reg_t>
-  inline T GetReturnValue() const {
+  [[nodiscard]] inline T GetReturnValue() const {
     return GetArg<0, T>();
   }
 
@@ -123,7 +123,7 @@ class RegisterContext {
   }
 
   template <uint16_t N, typename T = reg_t>
-  inline T GetArg() const {
+  [[nodiscard]] inline T GetArg() const {
     static_assert(sizeof(T) <= sizeof(reg_t), "Invalid type");
     static_assert(N <= 7 || !(std::is_same_v<T, float> || std::is_same_v<T, double>),
                   "Unsupported argument index");
@@ -225,7 +225,7 @@ class ScopedRWXMemory {
 
   ScopedRWXMemory(func_t address, int original_prot);
 
-  inline bool IsValid() {
+  [[nodiscard]] inline bool IsValid() {
     return address_ != nullptr;
   }
 
@@ -251,7 +251,7 @@ void UnhookFunction(func_t address);
 
 bool SetTrampolineAllocator(TrampolineAllocator allocator);
 
-const char* GetLastError();
+[[nodiscard]] const char* GetLastError();
 
 // ========================= Templates =========================
 
