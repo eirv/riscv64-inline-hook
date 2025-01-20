@@ -70,7 +70,7 @@ class Trampoline {
   static void WriteFirstTrampoline(func_t address, void* target, TrampolineType type);
 
  private:
-  static void Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v)
+  static void Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v);
 };
 
 }  // namespace rv64hook
