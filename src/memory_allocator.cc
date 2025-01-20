@@ -55,7 +55,7 @@ TrampolineAllocator MemoryAllocator::ta_(TrampolineType::kDefault);
 
 MemoryAllocator* MemoryAllocator::GetDefault() {
   if (default_allocator_) return default_allocator_;
-  auto heap = AllocMemory(kHeapSize, (void*)0x100000);
+  auto heap = AllocMemory(kHeapSize);
   auto allocator = new MemoryAllocator(heap, kHeapSize, malloc(kHeapSize / kChunkSize / 8));
   default_allocator_ = allocator;
   return allocator;
