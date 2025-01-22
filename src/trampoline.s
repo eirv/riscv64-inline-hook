@@ -71,7 +71,7 @@ kRiscVVectorExtension = 1
     fldp    \r1, \r2, \off, \rs1
 .endm
 
-.macro save_regs save_t3=0
+.macro sregs save_t3=0
     sd      sp, -(8 * 64)(sp)
     addi    sp, sp, -(8 * 66)
     sd      ra, (8 * 1)(sp)
@@ -86,7 +86,7 @@ kRiscVVectorExtension = 1
         sdt s10, s11, t3,   t4,   8 * 27, sp
     .else
         sdp s10, s11,             8 * 27, sp
-        sd  t4, (8 * 30)(sp)
+        sd  t4,                  (8 * 30)(sp)
     .endif
 
     sdp     t5,  t6,              8 * 31, sp
@@ -100,7 +100,7 @@ kRiscVVectorExtension = 1
     fsdt    ft8, ft9, ft10, ft11, 8 * 61, sp
 .endm
 
-.macro pop_regs pop_t3=0
+.macro pregs pop_t3=0
     fldt    ft8, ft9, ft10, ft11, 8 * 61, sp
     fldt    fs8, fs9, fs10, fs11, 8 * 57, sp
     fldt    fs4, fs5, fs6,  fs7,  8 * 53, sp
@@ -114,7 +114,7 @@ kRiscVVectorExtension = 1
     .if \pop_t3 != 0
         ldt s10, s11, t3,   t4,   8 * 27, sp
     .else
-        ld  t4, (8 * 30)(sp)
+        ld  t4,                  (8 * 30)(sp)
         ldp s10, s11,             8 * 27, sp
     .endif
 
@@ -128,7 +128,7 @@ kRiscVVectorExtension = 1
     ld      sp, (8 * 2)(sp)
 .endm
 
-.macro call_handlers off, handle
+.macro callrh off, handle
     ld      a1, \handle
 1:
     ld      t3, HookHandle_next(a1)
@@ -152,17 +152,17 @@ kRiscVVectorExtension = 1
 
 trampoline:
     ld      t3, .L.hook
-    beqz    t3, .L.call_handlers
+    beqz    t3, .L.call_register_handlers
     jr      t3
 
-.L.j_backup:
+.L.jump_backup:
     ld      t3, .L.backup
     jr      t3
 
-.L.call_handlers:
-    save_regs
+.L.call_register_handlers:
+    sregs
     sd      zero, (8 * 65)(sp)
-    call_handlers HookHandle_pre_handler, .L.root_handle
+    callrh  HookHandle_pre_handler, .L.root_handle
 
     .if kRiscVVectorExtension
         vsetivli zero, 1, e64, m1, ta, ma
@@ -171,7 +171,7 @@ trampoline:
         vle8.v   v28, (t3)
     .endif
 
-    pop_regs
+    pregs
 
     .if kRiscVVectorExtension
         vmv.x.s t3, v28
@@ -181,7 +181,7 @@ trampoline:
 
     bnez    t3, .L.return
     lhu     t3, .L.post_handlers
-    beqz    t3, .L.j_backup
+    beqz    t3, .L.jump_backup
 
     .if kRiscVVectorExtension
         vmv.v.x v28, ra
@@ -198,9 +198,9 @@ trampoline:
         fmv.x.d ra, ft11
     .endif
 
-    save_regs 1
-    call_handlers HookHandle_post_handler, .L.root_handle
-    pop_regs 1
+    sregs   1
+    callrh  HookHandle_post_handler, .L.root_handle
+    pregs   1
 
 .L.return:
     ret
