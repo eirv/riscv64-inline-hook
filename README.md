@@ -106,6 +106,8 @@ Output: `add(999, 666) = 114514`
 
 ## Acknowledgements
  * [berberis](https://android.googlesource.com/platform/frameworks/libs/binary_translation)
+ * [sifive-libc](https://github.com/sifive/sifive-libc)
+ * [open-bsd](https://www.openbsd.org)
 
 ## License
 [![LGPL v3](https://www.gnu.org/graphics/lgplv3-with-text-154x68.png)](https://www.gnu.org/licenses/lgpl-3.0.txt)
