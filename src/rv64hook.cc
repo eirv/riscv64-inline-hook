@@ -16,30 +16,32 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "rv64hook.h"
-
 #include <sys/mman.h>
 #include <unistd.h>
 
 #include <cstring>
 
+#include "arch/common/instruction_relocator.h"
+#include "arch/common/trampoline.h"
 #include "hook_handle.h"
 #include "hook_locker.h"
-#include "instruction_relocator.h"
 #include "logger.h"
-#include "memory_allocator.h"
-#include "trampoline.h"
+#include "memory.h"
+#include "rv64hook_internal.h"
 
 namespace rv64hook {
 
 static constexpr const char* kTag = "Hook";
+
+static TrampolineAllocator trampoline_allocator_(TrampolineType::kPC32);
 
 HookHandle* DoHook(func_t address,
                    func_t hook,
                    RegisterHandler pre_handler,
                    RegisterHandler post_handler,
                    void* data,
-                   func_t* user_backup_addr) {
+                   func_t* user_backup_addr,
+                   uint32_t flags) {
   HookLocker locker;
   auto info = HookInfo::Lookup(address);
   if (info) {
@@ -48,7 +50,12 @@ HookHandle* DoHook(func_t address,
       return nullptr;
     }
   } else {
-    auto [trampoline, is_user_alloc] = MemoryAllocator::AllocTrampoline(address);
+    if (uint8_t read_test[32]; !Memory::Copy(read_test, address, sizeof(read_test))) [[unlikely]] {
+      SET_ERROR("Function is not readable");
+      return nullptr;
+    }
+
+    auto [trampoline, is_user_alloc] = Trampoline::AllocSecondTrampoline(address);
     if (!trampoline) {
       return nullptr;
     }
@@ -62,19 +69,24 @@ HookHandle* DoHook(func_t address,
     }
 
     info = HookInfo::Create(address, trampoline, is_user_alloc, relocated, overwrite_size);
-    Trampoline::WriteFirstTrampoline(address, trampoline, type);
+    if (!Trampoline::WriteFirstTrampoline(address, trampoline, type)) [[unlikely]] {
+      info->Unhook(false);
+      SET_ERROR("Function is not writable");
+      return nullptr;
+    }
   }
   return info->NewHookHandle(hook, pre_handler, post_handler, data, user_backup_addr);
 }
 
 [[gnu::visibility("default"), maybe_unused]] HookHandle* InlineHook(func_t address,
                                                                     func_t hook,
-                                                                    func_t* backup) {
-  if (!address || !hook) [[unlikely]] {
+                                                                    func_t* backup,
+                                                                    uint32_t flags) {
+  if (!address || !hook || flags != 0) [[unlikely]] {
     SET_ERROR("Invalid argument");
     return nullptr;
   }
-  return DoHook(address, hook, nullptr, nullptr, nullptr, backup);
+  return DoHook(address, hook, nullptr, nullptr, nullptr, backup, flags);
 }
 
 [[gnu::visibility("default"), maybe_unused]] HookHandle* InlineInstrument(
@@ -82,23 +94,52 @@ HookHandle* DoHook(func_t address,
     RegisterHandler pre_handler,
     RegisterHandler post_handler,
     void* data,
-    func_t* backup) {
-  if (!address || (!pre_handler && !post_handler)) [[unlikely]] {
+    func_t* backup,
+    uint32_t flags) {
+  if (!address || (!pre_handler && !post_handler) || flags != 0) [[unlikely]] {
     SET_ERROR("Invalid argument");
     return nullptr;
   }
-  return DoHook(address, nullptr, pre_handler, post_handler, data, backup);
+  return DoHook(address, nullptr, pre_handler, post_handler, data, backup, flags);
 }
 
-[[gnu::visibility("default"), maybe_unused]] void UnhookFunction(func_t address) {
-  HookLocker locker;
+[[gnu::visibility("default"), maybe_unused]] bool InlineUnhook(func_t address) {
   if (!address) [[unlikely]] {
-    return;
+    return false;
   }
+
+  HookLocker locker;
   auto info = HookInfo::Lookup(address);
   if (info && info->root_handle) [[likely]] {
     info->root_handle->UnhookAllExt();
+    return true;
   }
+  return false;
+}
+
+TrampolineAllocator* GetTrampolineAllocator() {
+  return &trampoline_allocator_;
+}
+
+[[gnu::visibility("default"), maybe_unused]] bool SetTrampolineAllocator(
+    TrampolineAllocator allocator) {
+  HookLocker locker;
+  if (allocator.type == TrampolineType::kCustom) {
+    if (allocator.custom_alloc && allocator.custom_free) {
+      trampoline_allocator_.type = allocator.type;
+      trampoline_allocator_.custom_alloc = allocator.custom_alloc;
+      trampoline_allocator_.custom_free = allocator.custom_free;
+      trampoline_allocator_.data = allocator.data;
+      return true;
+    }
+  } else if (Trampoline::IsValid(allocator.type)) {
+    trampoline_allocator_.type = allocator.type;
+    trampoline_allocator_.custom_alloc = nullptr;
+    trampoline_allocator_.custom_free = nullptr;
+    trampoline_allocator_.data = nullptr;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace rv64hook

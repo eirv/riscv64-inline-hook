@@ -21,33 +21,40 @@
 // Prototype:
 // void* memcpy(void *dest, const void *src, size_t count)
 
-#include "asm.h"
+#define ENTRY(symbol)        \
+    .globl symbol;           \
+    .hidden symbol;          \
+    .align 2;                \
+    .type symbol, @function; \
+    symbol:                  \
+    .cfi_startproc;
+
+#define END(function)   \
+    .cfi_endproc;       \
+    .size function, .- function
 
 #define pDst a0
 #define pSrc a1
 #define iNum a2
 
 #define iVL a3
-#define pDstPtr a4
 
 #define ELEM_LMUL_SETTING m8
 #define vData v0
 
-ENTRY(rv64hook_libc_memcpy)
+ENTRY(__rv64hook_libc_memcpy_vext)
 
-    mv pDstPtr, pDst
-
-L(loop):
+.L.loop:
     vsetvli iVL, iNum, e8, ELEM_LMUL_SETTING, ta, ma
 
-    vle8.v vData, (pSrc)
-    sub iNum, iNum, iVL
-    add pSrc, pSrc, iVL
-    vse8.v vData, (pDstPtr)
-    add pDstPtr, pDstPtr, iVL
+    vle8.v  vData, (pSrc)
+    sub     iNum, iNum, iVL
+    add     pSrc, pSrc, iVL
+    vse8.v  vData, (pDst)
+    add     pDst, pDst, iVL
 
-    bnez iNum, L(loop)
+    bnez    iNum, .L.loop
 
     ret
 
-END(rv64hook_libc_memcpy)
+END(__rv64hook_libc_memcpy_vext)

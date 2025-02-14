@@ -20,8 +20,8 @@
 
 #include <map>
 
-#include "rv64hook.h"
-#include "trampoline.h"
+#include "arch/common/trampoline.h"
+#include "rv64hook_internal.h"
 
 namespace rv64hook {
 
@@ -55,7 +55,7 @@ class HookInfo {
 
   [[nodiscard]] TrampolineData* GetTrampolineData() const;
 
-  void Unhook();
+  void Unhook(bool initialized = true);
 
  private:
   static std::map<func_t, HookInfo> hooks_;

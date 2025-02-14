@@ -21,8 +21,7 @@
 #include <cstring>
 
 #include "hook_locker.h"
-#include "libc/libc.h"
-#include "memory_allocator.h"
+#include "memory.h"
 
 namespace rv64hook {
 
@@ -43,7 +42,7 @@ HookInfo* HookInfo::Create(func_t address,
   info->root_handle = nullptr;
   info->trampoline = trampoline;
   if (is_user_alloc) {
-    auto ta = MemoryAllocator::GetTrampolineAllocator();
+    auto ta = GetTrampolineAllocator();
     info->custom_free = ta->custom_free;
     info->custom_data = ta->data;
   } else {
@@ -52,7 +51,7 @@ HookInfo* HookInfo::Create(func_t address,
   info->relocated = relocated;
   info->handle_count = 0;
   info->function_backup_size = function_backup_size;
-  rv64hook_libc_memcpy(info->function_backup, address, function_backup_size);
+  Memory::Copy(info->function_backup, address, function_backup_size);
   return info;
 }
 
@@ -61,6 +60,7 @@ HookHandleExt* HookInfo::NewHookHandle(func_t hook,
                                        RegisterHandler post_handler,
                                        void* data,
                                        func_t* user_backup_addr) {
+  ScopedWritableAllocatedMemory unused(custom_free ? nullptr : trampoline);
   auto td = GetTrampolineData();
   auto new_handle =
       new HookHandleExt(address, hook, pre_handler, post_handler, data, user_backup_addr);
@@ -107,21 +107,22 @@ HookHandleExt* HookInfo::NewHookHandle(func_t hook,
 }
 
 TrampolineData* HookInfo::GetTrampolineData() const {
-  return reinterpret_cast<TrampolineData*>(static_cast<uint8_t*>(trampoline) + sizeof(kTrampoline));
+  return Trampoline::GetTrampolineData(trampoline);
 }
 
-void HookInfo::Unhook() {
-  rv64hook_libc_memcpy(address, function_backup, function_backup_size);
-  __builtin___clear_cache(static_cast<char*>(address),
-                          static_cast<char*>(address) + function_backup_size);
+void HookInfo::Unhook(bool initialized) {
+  if (initialized) {
+    Memory::Copy(address, function_backup, function_backup_size);
+    __builtin___clear_cache(static_cast<char*>(address),
+                            static_cast<char*>(address) + function_backup_size);
+  }
 
-  auto allocator = MemoryAllocator::GetDefault();
   if (custom_free) {
     custom_free(trampoline, custom_data);
   } else {
-    allocator->Free(trampoline);
+    Memory::Free(trampoline);
   }
-  allocator->Free(relocated);
+  Memory::Free(relocated);
   hooks_.erase(this);
 }
 
@@ -168,6 +169,7 @@ void HookHandleExt::UnhookExt() {
     return;
   } else info->handle_count--;
 
+  ScopedWritableAllocatedMemory unused(info->custom_free ? nullptr : info->trampoline);
   auto td = info->GetTrampolineData();
 
   if (post_handler_) {

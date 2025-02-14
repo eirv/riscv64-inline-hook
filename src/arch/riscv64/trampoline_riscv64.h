@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "rv64hook.h"
+#include <cstdint>
 
 namespace rv64hook {
 
@@ -54,23 +54,4 @@ static constexpr uint16_t kTrampoline[] = {
     0x6426, 0x6406, 0x73e2, 0x7342, 0x72a2, 0x7202, 0x61e2, 0x60a2, 0x6142, 0x8082,
 };
 
-struct TrampolineData {
-  [[maybe_unused]] HookHandle* root_handle;
-  [[maybe_unused]] void* hook;
-  [[maybe_unused]] void* backup;
-  [[maybe_unused]] uint16_t post_handlers;
-};
-
-class Trampoline {
- public:
-  static TrampolineType GetSuggestedTrampolineType(func_t address, void* target);
-
-  static int GetFirstTrampolineSize(TrampolineType type);
-
-  static void WriteFirstTrampoline(func_t address, void* target, TrampolineType type);
-
- private:
-  static void Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t v);
-};
-
-}  // namespace rv64hook
+}

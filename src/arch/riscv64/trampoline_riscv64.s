@@ -19,9 +19,9 @@
 # 如何编译此文件?
 #   1. 安装 Android NDK r27+, 并确保其可用
 #   2. 打开终端, Windows 可以使用 git-bash
-#   3. 输入: riscv64-linux-android35-clang -o trampoline.o -shared -nostdlib -nostartfiles trampoline.s
+#   3. 输入: riscv64-linux-android35-clang -o trampoline.o -shared -nostdlib -nostartfiles trampoline_riscv64.s
 #   4. 输入: od -An -w2 -tx2 -v -j 65536 -N $(llvm-readelf --dyn-syms --elf-output-style=JSON trampoline.o | sed 's/.*\"Name\":\"trampoline\",\"Value\":1\},\"Value\":6553.,\"Size\":\([0-9]*\),.*/\1/') trampoline.o | awk "{for(i=1;i<=NF;++i)printf \"0x%s,\",\$i}"
-#   5. 将打印的内容替换 trampoline.h 中的 kTrampoline
+#   5. 将打印的内容替换 trampoline_riscv64.h 中的 kTrampoline
 
 HookHandle_next = 8 * 3
 HookHandle_pre_handler = 8 * 5
@@ -30,6 +30,7 @@ HookHandle_data = 8 * 7
 HookHandle_enabled = 8 * 9
 
 kRiscVVectorExtension = 1
+kFullFloatingPointRegisterPack = 1
 
 .macro sdp r1, r2, off, rs1
     sd      \r1, (\off)(\rs1)
@@ -90,25 +91,37 @@ kRiscVVectorExtension = 1
     .endif
 
     sdp     t5,  t6,              8 * 31, sp
-    fsdt    ft0, ft1, ft2,  ft3,  8 * 33, sp
-    fsdt    ft4, ft5, ft6,  ft7,  8 * 37, sp
-    fsdt    fs0, fs1, fa0,  fa1,  8 * 41, sp
-    fsdt    fa2, fa3, fa4,  fa5,  8 * 45, sp
-    fsdt    fa6, fa7, fs2,  fs3,  8 * 49, sp
-    fsdt    fs4, fs5, fs6,  fs7,  8 * 53, sp
-    fsdt    fs8, fs9, fs10, fs11, 8 * 57, sp
-    fsdt    ft8, ft9, ft10, ft11, 8 * 61, sp
+
+    .if kFullFloatingPointRegisterPack
+        fsdt    ft0, ft1, ft2,  ft3,  8 * 33, sp
+        fsdt    ft4, ft5, ft6,  ft7,  8 * 37, sp
+        fsdt    fs0, fs1, fa0,  fa1,  8 * 41, sp
+        fsdt    fa2, fa3, fa4,  fa5,  8 * 45, sp
+        fsdt    fa6, fa7, fs2,  fs3,  8 * 49, sp
+        fsdt    fs4, fs5, fs6,  fs7,  8 * 53, sp
+        fsdt    fs8, fs9, fs10, fs11, 8 * 57, sp
+        fsdt    ft8, ft9, ft10, ft11, 8 * 61, sp
+    .else
+        fsdt    fa0, fa1, fa2,  fa3,  8 * 43, sp
+        fsdt    fa4, fa5, fa6,  fa7,  8 * 47, sp
+    .endif
 .endm
 
 .macro pregs pop_t3=0
-    fldt    ft8, ft9, ft10, ft11, 8 * 61, sp
-    fldt    fs8, fs9, fs10, fs11, 8 * 57, sp
-    fldt    fs4, fs5, fs6,  fs7,  8 * 53, sp
-    fldt    fa6, fa7, fs2,  fs3,  8 * 49, sp
-    fldt    fa2, fa3, fa4,  fa5,  8 * 45, sp
-    fldt    fs0, fs1, fa0,  fa1,  8 * 41, sp
-    fldt    ft4, ft5, ft6,  ft7,  8 * 37, sp
-    fldt    ft0, ft1, ft2,  ft3,  8 * 33, sp
+    .if kFullFloatingPointRegisterPack
+        fldt    ft8, ft9, ft10, ft11, 8 * 61, sp
+        fldt    fs8, fs9, fs10, fs11, 8 * 57, sp
+        fldt    fs4, fs5, fs6,  fs7,  8 * 53, sp
+        fldt    fa6, fa7, fs2,  fs3,  8 * 49, sp
+        fldt    fa2, fa3, fa4,  fa5,  8 * 45, sp
+        fldt    fs0, fs1, fa0,  fa1,  8 * 41, sp
+        fldt    ft4, ft5, ft6,  ft7,  8 * 37, sp
+        fldt    ft0, ft1, ft2,  ft3,  8 * 33, sp
+    .else
+        fldt    fa4, fa5, fa6,  fa7,  8 * 47, sp
+        fldt    fa0, fa1, fa2,  fa3,  8 * 43, sp
+    .endif
+
     ldp     t5,  t6,              8 * 31, sp
 
     .if \pop_t3 != 0

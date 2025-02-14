@@ -23,7 +23,7 @@
 
 namespace rv64hook {
 
-static constexpr size_t kRwxSize = 20;
+static constexpr size_t kRwxSize = 32;
 
 [[gnu::visibility("default"), maybe_unused]] ScopedRWXMemory::ScopedRWXMemory(void* address,
                                                                               int original_prot)

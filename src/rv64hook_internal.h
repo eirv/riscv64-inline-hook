@@ -18,25 +18,10 @@
 
 #pragma once
 
-#include <cstdint>
+#include "rv64hook.h"
 
 namespace rv64hook {
 
-class MemorySpace {
- public:
-  uintptr_t address;
-  size_t size;
+TrampolineAllocator* GetTrampolineAllocator();
 
-  inline MemorySpace(uintptr_t addr, size_t sz) : address(addr), size(sz) {
-  }
-
-  inline bool operator<(const MemorySpace& o) const {
-    return size > o.size;
-  }
-
-  inline bool operator==(const MemorySpace& o) const {
-    return address == o.address;
-  }
-};
-
-}  // namespace rv64hook
+}
