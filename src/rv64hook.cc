@@ -33,7 +33,7 @@ namespace rv64hook {
 
 static constexpr const char* kTag = "Hook";
 
-static TrampolineAllocator trampoline_allocator_(TrampolineType::kPC32);
+static TrampolineAllocator trampoline_allocator_(TrampolineType::kDefault);
 
 HookHandle* DoHook(func_t address,
                    func_t hook,
