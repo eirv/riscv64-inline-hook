@@ -29,6 +29,10 @@ namespace rv64hook {
 static char error_buf[128];
 static bool has_error = false;
 
+void ClearError() {
+  has_error = false;
+}
+
 void SetError(const char* tag, const char* fmt, ...) {
   va_list va;
   va_start(va, fmt);

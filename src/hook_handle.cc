@@ -21,6 +21,7 @@
 #include <cstring>
 
 #include "hook_locker.h"
+#include "logger.h"
 #include "memory.h"
 
 namespace rv64hook {
@@ -226,11 +227,13 @@ void HookHandleExt::UnhookAllExt() {
 
 [[gnu::visibility("default"), maybe_unused]] void HookHandle::Unhook() {
   HookLocker locker;
+  ClearError();
   reinterpret_cast<HookHandleExt*>(this)->UnhookExt();
 }
 
 [[gnu::visibility("default"), maybe_unused]] void HookHandle::UnhookAll() {
   HookLocker locker;
+  ClearError();
   reinterpret_cast<HookHandleExt*>(this)->UnhookAllExt();
 }
 

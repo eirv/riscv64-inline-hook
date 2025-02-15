@@ -43,6 +43,8 @@ HookHandle* DoHook(func_t address,
                    func_t* user_backup_addr,
                    uint32_t flags) {
   HookLocker locker;
+  ClearError();
+
   auto info = HookInfo::Lookup(address);
   if (info) {
     if (info->handle_count == 0xFFFF) [[unlikely]] {
@@ -109,11 +111,13 @@ HookHandle* DoHook(func_t address,
   }
 
   HookLocker locker;
-  auto info = HookInfo::Lookup(address);
-  if (info && info->root_handle) [[likely]] {
+  ClearError();
+
+  if (auto info = HookInfo::Lookup(address); info && info->root_handle) [[likely]] {
     info->root_handle->UnhookAllExt();
     return true;
   }
+
   return false;
 }
 

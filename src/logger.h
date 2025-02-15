@@ -24,6 +24,8 @@
 
 namespace rv64hook {
 
+void ClearError();
+
 void SetError(const char* tag, const char* fmt, ...);
 
-}
+}  // namespace rv64hook
