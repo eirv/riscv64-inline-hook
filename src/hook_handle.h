@@ -37,7 +37,7 @@ class HookInfo {
   void* relocated;
   uint16_t handle_count;
   uint8_t function_backup_size;
-  uint8_t function_backup[20];
+  uint8_t function_backup[kMaxBackupSize];
 
   static HookInfo* Lookup(func_t func);
 
