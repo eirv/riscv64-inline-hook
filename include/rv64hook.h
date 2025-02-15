@@ -153,7 +153,7 @@ HookHandle* InlineInstrument(func_t address,
                              func_t* backup = nullptr,
                              uint32_t flags = 0);
 
-bool WriteTrampoline(func_t address, func_t hook, func_t* backup = nullptr);
+int WriteTrampoline(func_t address, func_t hook, func_t* backup = nullptr);
 
 bool InlineUnhook(func_t address);
 

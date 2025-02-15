@@ -130,12 +130,12 @@ HookHandle* DoHook(func_t address,
   return false;
 }
 
-[[gnu::visibility("default"), maybe_unused]] bool WriteTrampoline(func_t address,
-                                                                  func_t hook,
-                                                                  func_t* backup) {
+[[gnu::visibility("default"), maybe_unused]] int WriteTrampoline(func_t address,
+                                                                 func_t hook,
+                                                                 func_t* backup) {
   if (!address || !hook) [[unlikely]] {
     SET_ERROR("Invalid argument");
-    return false;
+    return 0;
   }
 
   HookLocker locker;
@@ -147,7 +147,7 @@ HookHandle* DoHook(func_t address,
     record = &it->second;
     if (!record->IsModified()) [[unlikely]] {
       SET_ERROR("Too many hooks");
-      return false;
+      return 0;
     }
   } else {
     record = &function_records_.emplace(address, address).first->second;

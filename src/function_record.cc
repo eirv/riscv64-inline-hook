@@ -13,44 +13,43 @@ FunctionRecord::FunctionRecord(func_t address)
     : address_(address),
       backup_trampoline_(nullptr),
       original_function_hash_(0),
-      function_backup_size_(0) {
+      overwrite_size_(0) {
 }
 
 bool FunctionRecord::IsModified() {
-  return ComputeHash(address_, function_backup_size_) != original_function_hash_;
+  return ComputeHash(address_, overwrite_size_) != original_function_hash_;
 }
 
-bool FunctionRecord::WriteTrampoline(func_t hook, func_t* backup) {
+int FunctionRecord::WriteTrampoline(func_t hook, func_t* backup) {
   if (backup_trampoline_) {
     Memory::Free(backup_trampoline_);
   }
 
   auto type = Trampoline::GetSuggestedTrampolineType(address_, hook);
-  function_backup_size_ = Trampoline::GetFirstTrampolineSize(type);
+  overwrite_size_ = Trampoline::GetFirstTrampolineSize(type);
 
-  if (!Memory::Copy(function_backup_, address_, function_backup_size_)) [[unlikely]] {
+  if (!Memory::Copy(function_backup_, address_, overwrite_size_)) [[unlikely]] {
     SET_ERROR("Function is not readable");
-    return false;
+    return 0;
   }
 
-  original_function_hash_ = ComputeHash(address_, function_backup_size_);
+  original_function_hash_ = ComputeHash(address_, overwrite_size_);
 
-  if (backup && !InstructionRelocator::Relocate(address_, function_backup_size_, backup))
-      [[unlikely]] {
-    return false;
+  if (backup && !InstructionRelocator::Relocate(address_, overwrite_size_, backup)) [[unlikely]] {
+    return 0;
   }
   backup_trampoline_ = *backup;
 
   if (!Trampoline::WriteFirstTrampoline(address_, hook, type)) [[unlikely]] {
     SET_ERROR("Function is not writable");
-    return false;
+    return 0;
   }
 
-  return true;
+  return overwrite_size_;
 }
 
 void FunctionRecord::Unhook() {
-  Memory::Copy(address_, function_backup_, function_backup_size_);
+  Memory::Copy(address_, function_backup_, overwrite_size_);
   if (backup_trampoline_) {
     Memory::Free(backup_trampoline_);
   }

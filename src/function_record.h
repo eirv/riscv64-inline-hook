@@ -11,7 +11,7 @@ class FunctionRecord {
 
   bool IsModified();
 
-  bool WriteTrampoline(func_t hook, func_t* backup);
+  int WriteTrampoline(func_t hook, func_t* backup);
 
   void Unhook();
 
@@ -19,7 +19,7 @@ class FunctionRecord {
   func_t address_;
   void* backup_trampoline_;
   int16_t original_function_hash_;
-  uint8_t function_backup_size_;
+  uint8_t overwrite_size_;
   uint8_t function_backup_[kMaxBackupSize];
 
   static int16_t ComputeHash(func_t address, size_t size);
