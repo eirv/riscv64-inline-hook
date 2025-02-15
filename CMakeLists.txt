@@ -6,6 +6,12 @@ enable_language(ASM)
 
 set(CMAKE_CXX_STANDARD 20)
 
+if (DEFINED ANDROID_ABI)
+    set(RV64HOOK_ABI ANDROID_ABI)
+else ()
+    set(RV64HOOK_ABI CMAKE_SYSTEM_PROCESSOR)
+endif ()
+
 set(RV64HOOK_SOURCES
         src/libc/memcpy_generic.cc
         src/rv64hook.cc
@@ -17,7 +23,7 @@ set(RV64HOOK_SOURCES
         src/scoped_rwx_memory.cc)
 set(RV64HOOK_LIBS)
 
-if (ANDROID_ABI STREQUAL "riscv64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
+if (RV64HOOK_ABI STREQUAL "riscv64")
     set(RV64HOOK_SOURCES
             ${RV64HOOK_SOURCES}
             src/arch/riscv64/riscv64_support.cc
@@ -25,7 +31,7 @@ if (ANDROID_ABI STREQUAL "riscv64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
     set(RV64HOOK_LIBS ${RV64HOOK_LIBS} berberis-static)
     add_subdirectory(external/berberis)
 else ()
-    message(FATAL_ERROR "[riscv64-inline-hook] Unsupported ABI: ${CMAKE_SYSTEM_PROCESSOR}")
+    message(FATAL_ERROR "[riscv64-inline-hook] Unsupported ABI: ${RV64HOOK_ABI}")
 endif ()
 
 option(RV64HOOK_BUILD_SHARED "Build shared library" OFF)
