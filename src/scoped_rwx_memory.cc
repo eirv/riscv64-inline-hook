@@ -19,11 +19,10 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include "arch/common/trampoline.h"
 #include "rv64hook.h"
 
 namespace rv64hook {
-
-static constexpr size_t kRwxSize = 32;
 
 [[gnu::visibility("default"), maybe_unused]] ScopedRWXMemory::ScopedRWXMemory(void* address,
                                                                               int original_prot)
@@ -34,7 +33,7 @@ static constexpr size_t kRwxSize = 32;
   }
   auto page_size = getpagesize();
   address_ = __builtin_align_down(address, page_size);
-  size_ = __builtin_align_up(reinterpret_cast<uintptr_t>(address) + kRwxSize, page_size) -
+  size_ = __builtin_align_up(reinterpret_cast<uintptr_t>(address) + kMaxBackupSize, page_size) -
           reinterpret_cast<uintptr_t>(address_);
   if (mprotect(address_, size_, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
     address_ = nullptr;

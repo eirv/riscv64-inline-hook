@@ -22,6 +22,10 @@
 
 #include "rv64hook_internal.h"
 
+#ifdef __riscv
+#include "arch/riscv64/trampoline_riscv64.h"
+#endif
+
 namespace rv64hook {
 
 class HookHandleExt;
