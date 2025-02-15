@@ -24,7 +24,7 @@ set(RV64HOOK_SOURCES
 set(RV64HOOK_LIBS)
 
 if (RV64HOOK_ABI STREQUAL "riscv64")
-    set(RV64HOOK_SUPPORTED)
+    set(RV64HOOK_SUPPORTED ON)
     set(RV64HOOK_SOURCES
             ${RV64HOOK_SOURCES}
             src/arch/riscv64/riscv64_support.cc
