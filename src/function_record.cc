@@ -23,6 +23,7 @@ bool FunctionRecord::IsModified() {
 int FunctionRecord::WriteTrampoline(func_t hook, func_t* backup) {
   if (backup_trampoline_) {
     Memory::Free(backup_trampoline_);
+    backup_trampoline_ = nullptr;
   }
 
   auto type = Trampoline::GetSuggestedTrampolineType(address_, hook);
@@ -35,10 +36,13 @@ int FunctionRecord::WriteTrampoline(func_t hook, func_t* backup) {
 
   original_function_hash_ = ComputeHash(address_, overwrite_size_);
 
-  if (backup && !InstructionRelocator::Relocate(address_, overwrite_size_, backup)) [[unlikely]] {
-    return 0;
+  if (backup) {
+    if (InstructionRelocator::Relocate(address_, overwrite_size_, backup)) {
+      backup_trampoline_ = *backup;
+    } else {
+      return 0;
+    }
   }
-  backup_trampoline_ = *backup;
 
   if (!Trampoline::WriteFirstTrampoline(address_, hook, type)) [[unlikely]] {
     SET_ERROR("Function is not writable");
