@@ -378,10 +378,10 @@ class [[gnu::packed]] WideTrampoline {
   }
 
  private:
-  uint32_t unused_a_ = 0x00000e17;  // auipc t3, 0
-  uint32_t unused_b_ = 0x00ae3e03;  // ld t3, 10(t3)
-  uint16_t unused_c_ = 0x8e02;      // jr t3
-  void* address_;                   // .quad xxx
+  [[maybe_unused]] uint32_t unused_a_ = 0x00000e17;  // auipc t3, 0
+  [[maybe_unused]] uint32_t unused_b_ = 0x00ae3e03;  // ld t3, 10(t3)
+  [[maybe_unused]] uint16_t unused_c_ = 0x8e02;      // jr t3
+  [[maybe_unused]] void* address_;                   // .quad xxx
 };
 
 int Trampoline::GetFirstTrampolineSize(TrampolineType type) {

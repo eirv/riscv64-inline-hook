@@ -17,6 +17,7 @@
  */
 
 #pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-pragmas"
 #pragma ide diagnostic ignored "misc-no-recursion"
 
 #include "memory.h"
