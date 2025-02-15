@@ -153,6 +153,8 @@ HookHandle* InlineInstrument(func_t address,
                              func_t* backup = nullptr,
                              uint32_t flags = 0);
 
+bool WriteTrampoline(func_t address, func_t hook, func_t* backup = nullptr);
+
 bool InlineUnhook(func_t address);
 
 bool SetTrampolineAllocator(TrampolineAllocator allocator);
@@ -190,6 +192,13 @@ static inline auto InlineInstrument(Func address,
                           static_cast<void*>(data),
                           reinterpret_cast<func_t*>(backup),
                           flags);
+}
+
+template <typename Func, typename MayLambda = Func>
+static inline auto WriteTrampoline(Func address, MayLambda hook, Func* backup = nullptr) {
+  return WriteTrampoline(reinterpret_cast<func_t>(address),
+                         reinterpret_cast<func_t>(static_cast<Func>(hook)),
+                         reinterpret_cast<func_t*>(backup));
 }
 
 // ========================= Helpers =========================
@@ -382,6 +391,8 @@ RV64_HookHandle* RV64_InlineInstrument(
     void* data,
     void** backup,
     uint32_t flags) __asm__("_ZN8rv64hook16InlineInstrumentEPvPFvPNS_15RegisterContextEPNS_10HookHandleES0_ES6_S0_PS0_j");
+
+bool WriteTrampoline(void* address, void* hook, void** backup) __asm__("_ZN8rv64hook15WriteTrampolineEPvS0_PS0_");
 
 bool RV64_SetEnabled(RV64_HookHandle* handle, bool enabled) __asm__("_ZN8rv64hook10HookHandle10SetEnabledEb");
 

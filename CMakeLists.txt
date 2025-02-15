@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(RV64HOOK_SOURCES
         src/libc/memcpy_generic.cc
         src/rv64hook.cc
+        src/function_record.cc
         src/hook_handle.cc
         src/hook_locker.cc
         src/logger.cc

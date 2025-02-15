@@ -20,9 +20,11 @@
 #include <unistd.h>
 
 #include <cstring>
+#include <map>
 
 #include "arch/common/instruction_relocator.h"
 #include "arch/common/trampoline.h"
+#include "function_record.h"
 #include "hook_handle.h"
 #include "hook_locker.h"
 #include "logger.h"
@@ -34,6 +36,7 @@ namespace rv64hook {
 static constexpr const char* kTag = "Hook";
 
 static TrampolineAllocator trampoline_allocator_(TrampolineType::kDefault);
+static std::map<func_t, FunctionRecord> function_records_;
 
 HookHandle* DoHook(func_t address,
                    func_t hook,
@@ -118,7 +121,39 @@ HookHandle* DoHook(func_t address,
     return true;
   }
 
+  if (auto it = function_records_.find(address); it != function_records_.end()) {
+    it->second.Unhook();
+    function_records_.erase(address);
+    return true;
+  }
+
   return false;
+}
+
+[[gnu::visibility("default"), maybe_unused]] bool WriteTrampoline(func_t address,
+                                                                  func_t hook,
+                                                                  func_t* backup) {
+  if (!address || !hook) [[unlikely]] {
+    SET_ERROR("Invalid argument");
+    return false;
+  }
+
+  HookLocker locker;
+  ClearError();
+
+  FunctionRecord* record = nullptr;
+
+  if (auto it = function_records_.find(address); it != function_records_.end()) {
+    record = &it->second;
+    if (!record->IsModified()) [[unlikely]] {
+      SET_ERROR("Too many hooks");
+      return false;
+    }
+  } else {
+    record = &function_records_.emplace(address, address).first->second;
+  }
+
+  return record->WriteTrampoline(hook, backup);
 }
 
 TrampolineAllocator* GetTrampolineAllocator() {
