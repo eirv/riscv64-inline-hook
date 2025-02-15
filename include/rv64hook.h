@@ -392,7 +392,7 @@ RV64_HookHandle* RV64_InlineInstrument(
     void** backup,
     uint32_t flags) __asm__("_ZN8rv64hook16InlineInstrumentEPvPFvPNS_15RegisterContextEPNS_10HookHandleES0_ES6_S0_PS0_j");
 
-bool WriteTrampoline(void* address, void* hook, void** backup) __asm__("_ZN8rv64hook15WriteTrampolineEPvS0_PS0_");
+bool RV64_WriteTrampoline(void* address, void* hook, void** backup) __asm__("_ZN8rv64hook15WriteTrampolineEPvS0_PS0_");
 
 bool RV64_SetEnabled(RV64_HookHandle* handle, bool enabled) __asm__("_ZN8rv64hook10HookHandle10SetEnabledEb");
 
