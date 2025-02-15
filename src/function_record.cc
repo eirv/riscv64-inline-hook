@@ -37,7 +37,7 @@ int FunctionRecord::WriteTrampoline(func_t hook, func_t* backup) {
   original_function_hash_ = ComputeHash(address_, overwrite_size_);
 
   if (backup) {
-    if (InstructionRelocator::Relocate(address_, overwrite_size_, backup)) {
+    if (InstructionRelocator::Relocate(address_, overwrite_size_, backup)) [[likely]] {
       backup_trampoline_ = *backup;
     } else {
       return 0;
