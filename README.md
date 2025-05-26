@@ -11,6 +11,9 @@ A Lightweight Inline Hook Library for RISC-V 64
  * Inline instrumentation support to read/modify register context before/after function calls
  * Simultaneous inline hook and inline instrumentation on the same function (Similar to `Xposed` framework behavior)
 
+## TODO
+ * aarch64?
+
 ## Getting Started
 This project provides both `C/C++` interfaces. The C interfaces offers basic functionality only; C++ implementation is recommended.
 

@@ -21,6 +21,8 @@
 // Prototype:
 // void* memcpy(void *dest, const void *src, size_t count)
 
+#include "config.h"
+
 #define ENTRY(symbol)        \
     .globl symbol;           \
     .hidden symbol;          \
@@ -42,6 +44,7 @@
 #define ELEM_LMUL_SETTING m8
 #define vData v0
 
+#if USE_VECTOR_EXTENSION
 ENTRY(__rv64hook_libc_memcpy_vext)
 
 .L.loop:
@@ -58,3 +61,4 @@ ENTRY(__rv64hook_libc_memcpy_vext)
     ret
 
 END(__rv64hook_libc_memcpy_vext)
+#endif

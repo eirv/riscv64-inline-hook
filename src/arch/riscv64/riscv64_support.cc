@@ -16,308 +16,13 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <optional>
-
-#include "arch/common/instruction_relocator.h"
+#include "arch/common/asm.h"
 #include "arch/common/trampoline.h"
-#include "berberis/assembler/rv64i.h"
-#include "berberis/decoder/riscv64/decoder.h"
-#include "logger.h"
-#include "memory.h"
-#include "trampoline_riscv64.h"
+#include "arch/riscv64/riscv64_relocator.h"
+#include "config.h"
+#include "core/memory.h"
 
 namespace rv64hook {
-
-class Assembler : public berberis::rv64i::Assembler {
- public:
-  explicit inline Assembler(berberis::MachineCode* code) : berberis::rv64i::Assembler(code) {
-  }
-
-  friend class Trampoline;
-};
-
-class RV64Relocator {
- public:
-  using Decoder = berberis::Decoder<RV64Relocator>;
-  using Register = Assembler::Register;
-
-  static size_t Relocate(const uint16_t* address, int size, void** relocated) {
-    berberis::MachineCode code;
-    Assembler assembler(&code);
-
-    RV64Relocator relocator(assembler);
-    Decoder decoder(&relocator);
-
-    size_t overwrite_size = 0;
-    while (size > 0) {
-      relocator.SetPC(reinterpret_cast<uintptr_t>(address));
-      auto count = decoder.Decode(address);
-      if (auto state = relocator.GetState(); state == kSkipped) {
-        if (count == 4) {
-          assembler.TwoByte(address[0], address[1]);
-        } else {
-          assembler.TwoByte(address[0]);
-        }
-      } else if (state != kRelocated) {
-        return 0;
-      }
-      size -= count;
-      address += count / sizeof(uint16_t);
-      overwrite_size += count;
-    }
-
-    relocator.JumpAddress(reinterpret_cast<uint64_t>(address));
-    relocator.EmitAddresses();
-    assembler.Finalize();
-
-    auto backup = Memory::Alloc(code.install_size());
-    *relocated = backup;
-
-    berberis::RecoveryMap recovery_map;
-    ScopedWritableAllocatedMemory unused(backup);
-    code.InstallUnsafe(static_cast<uint8_t*>(backup), &recovery_map);
-    __builtin___clear_cache(static_cast<char*>(backup),
-                            static_cast<char*>(backup) + code.install_size());
-
-    return overwrite_size;
-  }
-
-  void Auipc(const typename Decoder::UpperImmArgs& args) {
-    assembler_.Ld(Register{args.dst}, addresses_[GetPC() + args.imm]);
-    SetNewState(kRelocated);
-  }
-
-  void CompareAndBranch(const typename Decoder::BranchArgs& args) {
-    auto address = GetPC() + args.offset;
-    auto& label = *assembler_.MakeLabel();
-    auto& branch_label = *assembler_.MakeLabel();
-    switch (args.opcode) {
-      case Decoder::BranchOpcode::kBeq:
-        if (args.src2 == 0) {
-          assembler_.Beqz(Register{args.src1}, branch_label);
-        } else {
-          assembler_.Beq(Register{args.src1}, Register{args.src2}, branch_label);
-        }
-        break;
-      case Decoder::BranchOpcode::kBne:
-        if (args.src2 == 0) {
-          assembler_.Bnez(Register{args.src1}, branch_label);
-        } else {
-          assembler_.Bne(Register{args.src1}, Register{args.src2}, branch_label);
-        }
-        break;
-      case Decoder::BranchOpcode::kBlt:
-        if (args.src2 == 0) {
-          assembler_.Bltz(Register{args.src1}, branch_label);
-        } else {
-          assembler_.Blt(Register{args.src1}, Register{args.src2}, branch_label);
-        }
-        break;
-      case Decoder::BranchOpcode::kBge:
-        if (args.src2 == 0) {
-          assembler_.Bgez(Register{args.src1}, branch_label);
-        } else {
-          assembler_.Bge(Register{args.src1}, Register{args.src2}, branch_label);
-        }
-        break;
-      case Decoder::BranchOpcode::kBltu:
-        assembler_.Bltu(Register{args.src1}, Register{args.src2}, branch_label);
-        break;
-      case Decoder::BranchOpcode::kBgeu:
-        assembler_.Bgeu(Register{args.src1}, Register{args.src2}, branch_label);
-        break;
-      default:
-        Undefined();
-        return;
-    }
-    assembler_.Jal(Assembler::zero, label);
-    assembler_.Bind(&branch_label);
-    JumpAddress(address);
-    assembler_.Bind(&label);
-    SetNewState(kRelocated);
-  }
-
-  void JumpAndLink(const typename Decoder::JumpAndLinkArgs& args) {
-    assembler_.Ld(Assembler::t3, addresses_[GetPC() + args.offset]);
-    assembler_.Jalr(Register{args.dst}, Assembler::t3, 0);
-    SetNewState(kRelocated);
-  }
-
-  void JumpAndLinkRegister(const typename Decoder::JumpAndLinkRegisterArgs& args) {
-    if (args.dst == 0 && args.base == 1 && args.offset == 0) {
-      returned_ = true;
-    }
-    Skip();
-  }
-
-  void Amo(const auto&) {
-    Skip();
-  }
-
-  void Csr(const auto&) {
-    Skip();
-  }
-
-  void Fcvt(const auto&) {
-    Skip();
-  }
-
-  void Fma(const auto&) {
-    Skip();
-  }
-
-  void Fence(const auto&) {
-    Skip();
-  }
-
-  void FenceI(const auto&) {
-    Skip();
-  }
-
-  void Load(const auto&) {
-    Skip();
-  }
-
-  void Lui(const auto&) {
-    Skip();
-  }
-
-  void Nop() {
-    Skip();
-  }
-
-  void Op(auto&&) {
-    Skip();
-  }
-
-  void OpSingleInput(const auto&) {
-    Skip();
-  }
-
-  void OpFp(const auto&) {
-    Skip();
-  }
-
-  void OpFpGpRegisterTargetNoRounding(const auto&) {
-    Skip();
-  }
-
-  void OpFpGpRegisterTargetSingleInputNoRounding(const auto&) {
-    Skip();
-  }
-
-  void OpFpNoRounding(const auto&) {
-    Skip();
-  }
-
-  void FmvFloatToInteger(const auto&) {
-    Skip();
-  }
-
-  void FmvIntegerToFloat(const auto&) {
-    Skip();
-  }
-
-  void OpFpSingleInput(const auto&) {
-    Skip();
-  }
-
-  void OpFpSingleInputNoRounding(const auto&) {
-    Skip();
-  }
-
-  void OpImm(auto&&) {
-    Skip();
-  }
-
-  void OpVector(const auto&) {
-    Skip();
-  }
-
-  void Vsetivli(const auto&) {
-    Skip();
-  }
-
-  void Vsetvl(const auto&) {
-    Skip();
-  }
-
-  void Vsetvli(const auto&) {
-    Skip();
-  }
-
-  void Store(const auto&) {
-    Skip();
-  }
-
-  void System(const auto&) {
-    Skip();
-  }
-
-  void Undefined() {
-    if (returned_) {
-      Skip();
-    } else {
-      SET_ERROR("Unknown instruction at %#llx", pc_);
-      SetNewState(kError);
-    }
-  }
-
- private:
-  static constexpr const char* kTag = "Instruction Relocator";
-
-  static constexpr uint8_t kNone = 0;
-  static constexpr uint8_t kSkipped = 1;
-  static constexpr uint8_t kRelocated = 2;
-  static constexpr uint8_t kError = 3;
-
-  Assembler& assembler_;
-  std::map<uint64_t, Assembler::Label> addresses_{};
-  uintptr_t pc_{};
-  uint8_t state_{};
-  bool returned_{};
-
-  explicit RV64Relocator(Assembler& assembler) : assembler_(assembler) {
-  }
-
-  void SetPC(uintptr_t pc) {
-    pc_ = pc;
-  }
-
-  [[nodiscard]] uintptr_t GetPC() const {
-    return pc_;
-  }
-
-  void Skip() {
-    SetNewState(kSkipped);
-  }
-
-  uint8_t GetState() {
-    auto s = state_;
-    state_ = kNone;
-    return s;
-  }
-
-  void SetNewState(uint8_t state) {
-    if (state_ == kNone) {
-      state_ = state;
-    } else {
-      state_ = kError;
-    }
-  }
-
-  void JumpAddress(uint64_t address) {
-    assembler_.Ld(Assembler::t3, addresses_[address]);
-    assembler_.Jr(Assembler::t3);
-  }
-
-  void EmitAddresses() {
-    for (auto& p : addresses_) {
-      assembler_.Bind(&p.second);
-      assembler_.Emit64(p.first);
-    }
-  }
-};
 
 size_t InstructionRelocator::Relocate(const void* address, int size, void** relocated) {
   return RV64Relocator::Relocate(static_cast<const uint16_t*>(address), size, relocated);
@@ -345,13 +50,15 @@ bool Trampoline::Write32BitJumpInstruction(uint32_t op, func_t address, uint32_t
 
   uint32_t code[2];
   {
-    Assembler::RegisterOperand<Assembler::RdMarker, Assembler::Register> rd(Assembler::t3);
+    Assembler::RegisterOperand<Assembler::RdMarker, Assembler::Register> rd(
+        Assembler::TMP_GENERIC_REGISTER);
     Assembler::UImmediate imm(base << 12);
     code[0] = op | rd.EncodeImmediate() | imm.EncodedValue();
   }
   {
     Assembler::RegisterOperand<Assembler::RdMarker, Assembler::Register> rd(Assembler::zero);
-    Assembler::RegisterOperand<Assembler::Rs1Marker, Assembler::Register> rs1(Assembler::t3);
+    Assembler::RegisterOperand<Assembler::Rs1Marker, Assembler::Register> rs1(
+        Assembler::TMP_GENERIC_REGISTER);
     Assembler::IImmediate imm(add);
     code[1] = 0x67 | rd.EncodeImmediate() | rs1.EncodeImmediate() | imm.EncodedValue();
   }
@@ -374,14 +81,14 @@ TrampolineType Trampoline::GetSuggestedTrampolineType(func_t address, void* targ
 
 class [[gnu::packed]] WideTrampoline {
  public:
-  WideTrampoline(void* address) : address_(address) {
+  inline WideTrampoline(void* address) : address_(address) {
   }
 
  private:
-  [[maybe_unused]] uint32_t unused_a_ = 0x00000e17;  // auipc t3, 0
-  [[maybe_unused]] uint32_t unused_b_ = 0x00ae3e03;  // ld t3, 10(t3)
-  [[maybe_unused]] uint16_t unused_c_ = 0x8e02;      // jr t3
-  [[maybe_unused]] void* address_;                   // .quad xxx
+  [[maybe_unused]] uint32_t auipc_ = 0x00000e17;  // auipc t3, 0
+  [[maybe_unused]] uint32_t load_ = 0x00ae3e03;   // ld t3, 10(t3)
+  [[maybe_unused]] uint16_t jump_ = 0x8e02;       // jr t3
+  [[maybe_unused]] void* address_;                // .quad xxx
 };
 
 int Trampoline::GetFirstTrampolineSize(TrampolineType type) {
@@ -443,7 +150,8 @@ bool Trampoline::WriteFirstTrampoline(func_t address, void* target, TrampolineTy
 }
 
 std::tuple<void*, bool> Trampoline::AllocSecondTrampoline(func_t address) {
-  auto size = sizeof(kTrampoline) + sizeof(TrampolineData);
+  auto [code, code_size] = GetSecondTrampoline();
+  auto size = code_size + sizeof(TrampolineData);
   uintptr_t start = 0, end = 0;
 
   bool is_user_alloc = false;
@@ -485,16 +193,66 @@ std::tuple<void*, bool> Trampoline::AllocSecondTrampoline(func_t address) {
   }
 
   ScopedWritableAllocatedMemory unused(is_user_alloc ? nullptr : trampoline);
-  memcpy(trampoline, kTrampoline, sizeof(kTrampoline));
-  memset(static_cast<char*>(trampoline) + sizeof(kTrampoline), 0, sizeof(TrampolineData));
+  memcpy(trampoline, code, code_size);
+  memset(static_cast<uint8_t*>(trampoline) + code_size, 0, sizeof(TrampolineData));
   __builtin___clear_cache(static_cast<char*>(trampoline),
-                          static_cast<char*>(trampoline) + sizeof(kTrampoline));
+                          static_cast<char*>(trampoline) + code_size);
 
   return {trampoline, is_user_alloc};
 }
 
 TrampolineData* Trampoline::GetTrampolineData(void* trampoline) {
-  return reinterpret_cast<TrampolineData*>(static_cast<uint8_t*>(trampoline) + sizeof(kTrampoline));
+  return reinterpret_cast<TrampolineData*>(static_cast<uint8_t*>(trampoline) +
+                                           std::get<1>(GetSecondTrampoline()));
+}
+
+extern "C" void ASM_LABEL(trampoline)();
+extern "C" void ASM_LABEL(trampoline_end)();
+
+std::tuple<const void*, size_t> Trampoline::GetSecondTrampoline() {
+#ifdef RV64HOOK_BUILD_TRAMPOLINE
+  return {reinterpret_cast<const void*>(ASM_LABEL(trampoline)),
+          reinterpret_cast<size_t>(ASM_LABEL(trampoline_end)) -
+              reinterpret_cast<size_t>(ASM_LABEL(trampoline))};
+#else
+  static constexpr uint16_t kTrampoline[] = {
+      0x0e17, 0x0000, 0x0e03, 0x312e, 0x0963, 0x000e, 0x0e17, 0x0000, 0x3e03, 0x2e0e, 0x0863,
+      0x000e, 0x8e02, 0x0e17, 0x0000, 0x3e03, 0x2dae, 0x8e02, 0x3423, 0xe021, 0x0113, 0xdf81,
+      0xe406, 0xec0e, 0xf012, 0xf416, 0xf81a, 0xfc1e, 0xe0a2, 0xe4a6, 0xe8aa, 0xecae, 0xf0b2,
+      0xf4b6, 0xf8ba, 0xfcbe, 0xe142, 0xe546, 0xe94a, 0xed4e, 0xf152, 0xf556, 0xf95a, 0xfd5e,
+      0xe1e2, 0xe5e6, 0xe9ea, 0xedee, 0xf1f2, 0xf5f6, 0xf9fa, 0xfdfe, 0xa202, 0xa606, 0xaa0a,
+      0xae0e, 0xb212, 0xb616, 0xba1a, 0xbe1e, 0xa2a2, 0xa6a6, 0xaaaa, 0xaeae, 0xb2b2, 0xb6b6,
+      0xbaba, 0xbebe, 0xa342, 0xa746, 0xab4a, 0xaf4e, 0xb352, 0xb756, 0xbb5a, 0xbf5e, 0xa3e2,
+      0xa7e6, 0xabea, 0xafee, 0xb3f2, 0xb7f6, 0xbbfa, 0xbffe, 0x3023, 0x2001, 0x0597, 0x0000,
+      0xb583, 0x2385, 0xbe03, 0x0205, 0xe072, 0x8e03, 0x0505, 0x0963, 0x000e, 0xbe03, 0x0305,
+      0x0563, 0x000e, 0x0028, 0x61b0, 0x9e02, 0x6582, 0xf1ed, 0x0e17, 0x0000, 0x3e03, 0x230e,
+      0x0963, 0x000e, 0x0517, 0x0000, 0x2503, 0x22c5, 0x65a2, 0x9e02, 0xa801, 0xf057, 0xcd80,
+      0x3e57, 0x5e00, 0x60a2, 0xce57, 0x5e00, 0x0e03, 0x2001, 0x3ffe, 0x3f5e, 0x3ebe, 0x3e1e,
+      0x2dfe, 0x2d5e, 0x2cbe, 0x2c1e, 0x3bfa, 0x3b5a, 0x3aba, 0x3a1a, 0x29fa, 0x295a, 0x28ba,
+      0x281a, 0x37f6, 0x3756, 0x36b6, 0x3616, 0x25f6, 0x2556, 0x24b6, 0x2416, 0x33f2, 0x3352,
+      0x32b2, 0x3212, 0x21f2, 0x2152, 0x20b2, 0x2012, 0x7fee, 0x7f4e, 0x7eae, 0x7e0e, 0x6dee,
+      0x6d4e, 0x6cae, 0x6c0e, 0x7bea, 0x7b4a, 0x7aaa, 0x7a0a, 0x69ea, 0x694a, 0x68aa, 0x680a,
+      0x77e6, 0x7746, 0x76a6, 0x7606, 0x65e6, 0x6546, 0x64a6, 0x6406, 0x73e2, 0x7342, 0x72a2,
+      0x7202, 0x61e2, 0x60a2, 0x6142, 0x1263, 0x160e, 0x0e17, 0x0000, 0x1e03, 0x18ee, 0x08e3,
+      0xe80e, 0x0e17, 0x0000, 0x3e03, 0x166e, 0x9e02, 0x3423, 0xe021, 0x0113, 0xdf81, 0xec0e,
+      0xf012, 0xf416, 0xf81a, 0xfc1e, 0xe0a2, 0xe4a6, 0xe8aa, 0xecae, 0xf0b2, 0xf4b6, 0xf8ba,
+      0xfcbe, 0xe142, 0xe546, 0xe94a, 0xed4e, 0xf152, 0xf556, 0xf95a, 0xfd5e, 0xe1e2, 0xe5e6,
+      0xe9ea, 0xedee, 0xf1f2, 0xf5f6, 0xf9fa, 0xfdfe, 0xa202, 0xa606, 0xaa0a, 0xae0e, 0xb212,
+      0xb616, 0xba1a, 0xbe1e, 0xa2a2, 0xa6a6, 0xaaaa, 0xaeae, 0xb2b2, 0xb6b6, 0xbaba, 0xbebe,
+      0xa342, 0xa746, 0xab4a, 0xaf4e, 0xb352, 0xb756, 0xbb5a, 0xbf5e, 0xa3e2, 0xa7e6, 0xabea,
+      0xafee, 0xb3f2, 0xb7f6, 0xbbfa, 0xbffe, 0x0e17, 0x0000, 0x3e03, 0x0e2e, 0x0963, 0x000e,
+      0x0517, 0x0000, 0x2503, 0x0e65, 0x9e02, 0xe42a, 0xa029, 0x0e13, 0x0081, 0x0e27, 0x020e,
+      0x0597, 0x0000, 0xb583, 0x0a85, 0xbe03, 0x0205, 0xe072, 0x8e03, 0x0505, 0x0963, 0x000e,
+      0xbe03, 0x0385, 0x0563, 0x000e, 0x0028, 0x61b0, 0x9e02, 0x6582, 0xf1ed, 0x3ffe, 0x3f5e,
+      0x3ebe, 0x3e1e, 0x2dfe, 0x2d5e, 0x2cbe, 0x2c1e, 0x3bfa, 0x3b5a, 0x3aba, 0x3a1a, 0x29fa,
+      0x295a, 0x28ba, 0x281a, 0x37f6, 0x3756, 0x36b6, 0x3616, 0x25f6, 0x2556, 0x24b6, 0x2416,
+      0x33f2, 0x3352, 0x32b2, 0x3212, 0x21f2, 0x2152, 0x20b2, 0x2012, 0x7fee, 0x7f4e, 0x7eae,
+      0x7e0e, 0x6dee, 0x6d4e, 0x6cae, 0x6c0e, 0x7bea, 0x7b4a, 0x7aaa, 0x7a0a, 0x69ea, 0x694a,
+      0x68aa, 0x680a, 0x77e6, 0x7746, 0x76a6, 0x7606, 0x65e6, 0x6546, 0x64a6, 0x6406, 0x73e2,
+      0x7342, 0x72a2, 0x7202, 0x61e2, 0x60a2, 0x6142, 0x8082,
+  };
+  return {kTrampoline, sizeof(kTrampoline)};
+#endif
 }
 
 }  // namespace rv64hook

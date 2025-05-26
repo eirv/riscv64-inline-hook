@@ -1257,7 +1257,7 @@ inline void Assembler<DerivedAssemblerType>::ResolveJumps() {
           };
       // Check the instruction type:
       //   AUIPC uses UImmediate, Jal uses JImmediate, while Bcc uses BImmediate.
-      bool RelocationInRange;
+      [[maybe_unused]] bool RelocationInRange;
       if (*AddrAs<int32_t>(pc) & 16) {
         RelocationInRange = ProcessLabel.template operator()<UImmediate, MakeUImmediate>();
       } else if (*AddrAs<int32_t>(pc) & 4) {

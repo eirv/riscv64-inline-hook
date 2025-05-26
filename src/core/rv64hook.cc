@@ -24,6 +24,7 @@
 
 #include "arch/common/instruction_relocator.h"
 #include "arch/common/trampoline.h"
+#include "config.h"
 #include "function_record.h"
 #include "hook_handle.h"
 #include "hook_locker.h"
@@ -43,8 +44,7 @@ HookHandle* DoHook(func_t address,
                    RegisterHandler pre_handler,
                    RegisterHandler post_handler,
                    void* data,
-                   func_t* user_backup_addr,
-                   uint32_t flags) {
+                   func_t* user_backup_addr) {
   HookLocker locker;
   ClearError();
 
@@ -85,13 +85,12 @@ HookHandle* DoHook(func_t address,
 
 [[gnu::visibility("default"), maybe_unused]] HookHandle* InlineHook(func_t address,
                                                                     func_t hook,
-                                                                    func_t* backup,
-                                                                    uint32_t flags) {
-  if (!address || !hook || flags != 0) [[unlikely]] {
+                                                                    func_t* backup) {
+  if (!address || !hook) [[unlikely]] {
     SET_ERROR("Invalid argument");
     return nullptr;
   }
-  return DoHook(address, hook, nullptr, nullptr, nullptr, backup, flags);
+  return DoHook(address, hook, nullptr, nullptr, nullptr, backup);
 }
 
 [[gnu::visibility("default"), maybe_unused]] HookHandle* InlineInstrument(
@@ -99,13 +98,17 @@ HookHandle* DoHook(func_t address,
     RegisterHandler pre_handler,
     RegisterHandler post_handler,
     void* data,
-    func_t* backup,
-    uint32_t flags) {
-  if (!address || (!pre_handler && !post_handler) || flags != 0) [[unlikely]] {
+    func_t* backup) {
+  if (!address || (!pre_handler && !post_handler)) [[unlikely]] {
     SET_ERROR("Invalid argument");
     return nullptr;
   }
-  return DoHook(address, nullptr, pre_handler, post_handler, data, backup, flags);
+  if (STORE_RETURN_ADDRESS_BY_TLS &&
+      (address == pthread_getspecific || address == pthread_setspecific)) {
+    SET_ERROR("Unsupported function");
+    return nullptr;
+  }
+  return DoHook(address, nullptr, pre_handler, post_handler, data, backup);
 }
 
 [[gnu::visibility("default"), maybe_unused]] bool InlineUnhook(func_t address) {

@@ -42,14 +42,36 @@
 namespace rv64hook {
 
 struct MemoryHeader {
+  uint32_t magic;
+  uint32_t chunk_count;
   Memory* allocator;
-  uint16_t chunk_count;
 };
+
+class MemorySpace {
+ public:
+  uintptr_t address;
+  size_t size;
+
+  inline MemorySpace(uintptr_t addr, size_t sz) : address(addr), size(sz) {
+  }
+
+  inline bool operator<(const MemorySpace& o) const {
+    return size > o.size;
+  }
+
+  inline bool operator==(const MemorySpace& o) const {
+    return address == o.address;
+  }
+};
+
+static constexpr uint32_t kMemoryMagic = 0xCAFEBEEF;
 
 static constexpr size_t kHeapSize = 1 * 1024 * 1024;
 static constexpr size_t kSmallHeapSize = 64 * 1024;
 static constexpr size_t kChunkSize = 128;
 static constexpr size_t kAlignment = sizeof(MemoryHeader);
+
+static_assert(kAlignment % sizeof(void*) == 0, "Bad kAlignment");
 
 Memory* Memory::default_allocator_ = nullptr;
 Memory* Memory::root_allocator_ = nullptr;
@@ -60,7 +82,8 @@ static MemoryHeader* GetMemoryHeader(void* ptr) {
   }
 
   auto header = &reinterpret_cast<MemoryHeader*>(ptr)[-1];
-  if (header->chunk_count == 0 || !header->allocator) [[unlikely]] {
+  if (header->magic != kMemoryMagic || header->chunk_count == 0 || !header->allocator)
+      [[unlikely]] {
     return nullptr;
   }
 
@@ -185,7 +208,7 @@ int Memory::AllocChunk(uint8_t* chunk_table, size_t total_chunks, size_t chunk_c
 }
 
 void* Memory::DoAlloc(size_t size) {
-  ScopedWritableAllocatedMemory unused(this);
+  [[maybe_unused]] ScopedWritableAllocatedMemory unused(this);
   if (size == 0 || size > heap_size_) [[unlikely]] {
     return nullptr;
   }
@@ -196,14 +219,15 @@ void* Memory::DoAlloc(size_t size) {
   if (chunk < 0) return nullptr;
 
   auto header = reinterpret_cast<MemoryHeader*>(heap_ + (chunk * kChunkSize));
-  header->allocator = this;
+  header->magic = kMemoryMagic;
   header->chunk_count = expected_chunk_count;
+  header->allocator = this;
   allocated_chunks_ += expected_chunk_count;
   return header + 1;
 }
 
 void* Memory::DoRealloc(void* ptr, size_t size) {
-  ScopedWritableAllocatedMemory unused(this);
+  [[maybe_unused]] ScopedWritableAllocatedMemory unused(this);
   auto header = &reinterpret_cast<MemoryHeader*>(ptr)[-1];
 
   auto expected_chunk_count = __builtin_align_up(size + kAlignment, kChunkSize) / kChunkSize;
@@ -243,7 +267,7 @@ void* Memory::DoRealloc(void* ptr, size_t size) {
 }
 
 void Memory::DoFree(void* ptr) {
-  ScopedWritableAllocatedMemory unused(this);
+  [[maybe_unused]] ScopedWritableAllocatedMemory unused(this);
   auto header = &reinterpret_cast<MemoryHeader*>(ptr)[-1];
 
   auto start_chunk = (reinterpret_cast<uint8_t*>(header) - heap_) / kChunkSize;
@@ -266,6 +290,9 @@ void Memory::DoFree(void* ptr) {
   }
 }
 
+Memory::~Memory() {
+}
+
 Memory* Memory::NewAllocator(uintptr_t start,
                              uintptr_t end,
                              size_t min_size,
@@ -277,34 +304,46 @@ Memory* Memory::NewAllocator(uintptr_t start,
   uintptr_t previous_end = 0x8000;
   uintptr_t mem_start, mem_end;
   std::set<MemorySpace> spaces;
+  std::set<MemorySpace> dangerous_spaces;
 
   for (char* tmp; getline(&buf, &len, maps) != -1; previous_end = mem_end) {
     mem_start = strtoul(buf, &tmp, 16);
-    mem_end = strtoul(tmp + 1, nullptr, 16);
+    mem_end = strtoul(tmp + 1, &tmp, 16);
     if (previous_end < start) continue;
     auto size = (mem_start > end ? mem_start : end) - previous_end;
     if (size < min_size) continue;
     spaces.emplace(previous_end, size);
+    if (tmp[1] == '-' && tmp[2] == '-' && tmp[3] == '-' && tmp[4] == 'p') {
+      dangerous_spaces.emplace(mem_start, mem_end - mem_start);
+    }
   }
 
   free(buf);
   fclose(maps);
 
-  for (const auto& space : spaces) {
-    if (space.address > end) continue;
-    auto size = std::min(space.size, recommended_size);
-    auto base = space.address + std::min(space.size, end - space.address) - size;
-    if (base < start || base + size > end) {
-      continue;
+  auto new_memory = [=](const std::set<MemorySpace>& memory_spaces) -> Memory* {
+    for (const auto& space : memory_spaces) {
+      if (space.address > end) continue;
+      auto size = std::min(space.size, recommended_size);
+      auto base = space.address + std::min(space.size, end - space.address) - size;
+      if (base < start || base + size > end) {
+        continue;
+      }
+      if (uint8_t vec = 0;
+          mincore(reinterpret_cast<void*>(base), getpagesize(), &vec) == 0 && vec != 0) {
+        continue;
+      }
+      auto heap = AllocOSMemory(size, reinterpret_cast<void*>(base));
+      if (!heap) [[unlikely]] {
+        continue;
+      }
+      return new Memory(heap, size, malloc(size / kChunkSize / 8));
     }
-    auto heap = AllocOSMemory(size, reinterpret_cast<void*>(base));
-    if (!heap) [[unlikely]] {
-      continue;
-    }
-    return new Memory(heap, size, malloc(size / kChunkSize / 8));
-  }
+    return nullptr;
+  };
 
-  return nullptr;
+  auto memory = new_memory(spaces);
+  return memory ? memory : new_memory(dangerous_spaces);
 }
 
 void* Memory::AllocOSMemory(size_t size, void* start) {
@@ -330,7 +369,7 @@ void Memory::FreeOSMemory(void* ptr, size_t size) {
 }
 
 void Memory::ProtectOSMemory(void* ptr, size_t size, bool writable) {
-  mprotect(ptr, size, writable ? PROT_READ | PROT_WRITE | PROT_EXEC : PROT_READ | PROT_EXEC);
+  libc_mprotect(ptr, size, writable ? PROT_READ | PROT_WRITE | PROT_EXEC : PROT_READ | PROT_EXEC);
 }
 
 ScopedWritableAllocatedMemory::ScopedWritableAllocatedMemory(void* ptr) {

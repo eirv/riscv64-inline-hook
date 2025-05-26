@@ -44,16 +44,15 @@ class Memory {
   static Memory* default_allocator_;
   static Memory* root_allocator_;
 
-  Memory* next_;
+  Memory* next_{};
   uint8_t* heap_;
   size_t heap_size_;
-  size_t allocated_chunks_;
   uint8_t* chunk_table_;
+  size_t allocated_chunks_{};
   size_t references_{};
 
   Memory(void* heap, size_t heap_size, void* chunk_table)
-      : next_(nullptr),
-        heap_(static_cast<uint8_t*>(heap)),
+      : heap_(static_cast<uint8_t*>(heap)),
         heap_size_(heap_size),
         chunk_table_(static_cast<uint8_t*>(chunk_table)) {
   }
@@ -62,8 +61,6 @@ class Memory {
                               uintptr_t end,
                               size_t min_size,
                               size_t recommended_size = 0);
-
-  static bool SetTrampolineAllocator_(TrampolineAllocator& allocator);
 
   static int AllocChunk(uint8_t* chunk_table, size_t total_chunks, size_t chunk_count);
 
@@ -79,22 +76,7 @@ class Memory {
 
   void DoFree(void* ptr);
 
-  class MemorySpace {
-   public:
-    uintptr_t address;
-    size_t size;
-
-    inline MemorySpace(uintptr_t addr, size_t sz) : address(addr), size(sz) {
-    }
-
-    inline bool operator<(const MemorySpace& o) const {
-      return size > o.size;
-    }
-
-    inline bool operator==(const MemorySpace& o) const {
-      return address == o.address;
-    }
-  };
+  ~Memory();
 
   friend class ScopedWritableAllocatedMemory;
 };

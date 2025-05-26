@@ -20,17 +20,18 @@
 
 #include <cstring>
 
+#include "config.h"
 #include "hook_locker.h"
 #include "logger.h"
 #include "memory.h"
 
 namespace rv64hook {
 
-std::map<func_t, HookInfo> HookInfo::hooks_;
+std::map<func_t, HookInfo*> HookInfo::hooks_;
 
 HookInfo* HookInfo::Lookup(func_t func) {
   auto p = hooks_.find(func);
-  return p != hooks_.end() ? &p->second : nullptr;
+  return p != hooks_.end() ? p->second : nullptr;
 }
 
 HookInfo* HookInfo::Create(func_t address,
@@ -38,7 +39,7 @@ HookInfo* HookInfo::Create(func_t address,
                            bool is_user_alloc,
                            void* relocated,
                            uint8_t function_backup_size) {
-  auto info = &hooks_[address];
+  auto info = new HookInfo;
   info->address = address;
   info->root_handle = nullptr;
   info->trampoline = trampoline;
@@ -53,6 +54,7 @@ HookInfo* HookInfo::Create(func_t address,
   info->handle_count = 0;
   info->function_backup_size = function_backup_size;
   Memory::Copy(info->function_backup, address, function_backup_size);
+  hooks_.emplace(address, info);
   return info;
 }
 
@@ -62,10 +64,13 @@ HookHandleExt* HookInfo::NewHookHandle(func_t hook,
                                        void* data,
                                        func_t* user_backup_addr) {
   ScopedWritableAllocatedMemory unused(custom_free ? nullptr : trampoline);
+
   auto td = GetTrampolineData();
   auto new_handle =
-      new HookHandleExt(address, hook, pre_handler, post_handler, data, user_backup_addr);
+      new HookHandleExt(this, address, hook, pre_handler, post_handler, data, user_backup_addr);
+
   handle_count++;
+
   if (root_handle) {
     auto backup = relocated;
     for (auto handle = root_handle; handle; handle = handle->next_) {
@@ -78,10 +83,13 @@ HookHandleExt* HookInfo::NewHookHandle(func_t hook,
         break;
       }
     }
+
     new_handle->backup_ = backup;
+
     if (user_backup_addr) {
       *user_backup_addr = backup;
     }
+
     if (hook) {
       if (td->hook) td->hook = hook;
       else td->backup = hook;
@@ -94,16 +102,26 @@ HookHandleExt* HookInfo::NewHookHandle(func_t hook,
     root_handle = new_handle;
     td->root_handle = new_handle;
     new_handle->backup_ = relocated;
+
+    if (STORE_RETURN_ADDRESS_BY_TLS && pthread_key_create(&td->tls_key, nullptr) == 0) {
+      td->getspecific = pthread_getspecific;
+      td->setspecific = pthread_setspecific;
+    }
+
     if (user_backup_addr) {
       *user_backup_addr = relocated;
     }
+
     if (hook) {
       td->hook = hook;
     } else {
       td->backup = relocated;
       if (post_handler) td->post_handlers = 1;
     }
+
+    td->enabled = true;
   }
+
   return new_handle;
 }
 
@@ -118,6 +136,10 @@ void HookInfo::Unhook(bool initialized) {
                             static_cast<char*>(address) + function_backup_size);
   }
 
+  if (auto td = GetTrampolineData(); td->getspecific) {
+    pthread_key_delete(td->tls_key);
+  }
+
   if (custom_free) {
     custom_free(trampoline, custom_data);
   } else {
@@ -127,13 +149,15 @@ void HookInfo::Unhook(bool initialized) {
   hooks_.erase(this);
 }
 
-HookHandleExt::HookHandleExt(func_t address,
+HookHandleExt::HookHandleExt(HookInfo* info,
+                             func_t address,
                              func_t hook,
                              RegisterHandler pre_handler,
                              RegisterHandler post_handler,
                              void* data,
                              func_t* user_backup_addr)
     : HookHandle(),
+      info_(info),
       previous_(nullptr),
       next_(nullptr),
       hook_(hook),
@@ -151,6 +175,18 @@ bool HookHandleExt::SetEnabledExt(bool enabled) {
   return old;
 }
 
+bool HookHandleExt::SetEnabledAllExt(bool enabled) {
+  auto info = info_;
+  if (!info) [[unlikely]]
+    return false;
+
+  ScopedWritableAllocatedMemory unused(info->custom_free ? nullptr : info->trampoline);
+  auto td = info->GetTrampolineData();
+  auto old = td->enabled;
+  td->enabled = enabled;
+  return old;
+}
+
 void HookHandleExt::UpdateBackup(func_t new_backup) {
   if (user_backup_addr_) [[likely]] {
     if (*user_backup_addr_ == backup_) [[likely]] {
@@ -162,12 +198,16 @@ void HookHandleExt::UpdateBackup(func_t new_backup) {
   backup_ = new_backup;
 }
 
-void HookHandleExt::UnhookExt() {
-  auto info = HookInfo::Lookup(address_);
+bool HookHandleExt::UnhookExt() {
+  auto info = info_;
+  if (!info) [[unlikely]] {
+    return false;
+  }
+
   if (info->handle_count == 1) {
     delete this;
     info->Unhook();
-    return;
+    return true;
   } else info->handle_count--;
 
   ScopedWritableAllocatedMemory unused(info->custom_free ? nullptr : info->trampoline);
@@ -202,13 +242,16 @@ void HookHandleExt::UnhookExt() {
   if (previous_) {
     previous_->next_ = next_;
   }
+  info_ = nullptr;
   delete this;
+  return true;
 }
 
-void HookHandleExt::UnhookAllExt() {
-  auto info = HookInfo::Lookup(address_);
-  if (!info) [[unlikely]]
-    return;
+bool HookHandleExt::UnhookAllExt() {
+  auto info = info_;
+  if (!info) [[unlikely]] {
+    return false;
+  }
 
   for (auto handle = info->root_handle;;) {
     auto next = handle->next_;
@@ -219,22 +262,27 @@ void HookHandleExt::UnhookAllExt() {
     }
     handle = next;
   }
+  return true;
 }
 
 [[gnu::visibility("default"), maybe_unused]] bool HookHandle::SetEnabled(bool enabled) {
   return reinterpret_cast<HookHandleExt*>(this)->SetEnabledExt(enabled);
 }
 
-[[gnu::visibility("default"), maybe_unused]] void HookHandle::Unhook() {
-  HookLocker locker;
-  ClearError();
-  reinterpret_cast<HookHandleExt*>(this)->UnhookExt();
+[[gnu::visibility("default"), maybe_unused]] bool HookHandle::SetEnabledAll(bool enabled) {
+  return reinterpret_cast<HookHandleExt*>(this)->SetEnabledAllExt(enabled);
 }
 
-[[gnu::visibility("default"), maybe_unused]] void HookHandle::UnhookAll() {
+[[gnu::visibility("default"), maybe_unused]] bool HookHandle::Unhook() {
   HookLocker locker;
   ClearError();
-  reinterpret_cast<HookHandleExt*>(this)->UnhookAllExt();
+  return reinterpret_cast<HookHandleExt*>(this)->UnhookExt();
+}
+
+[[gnu::visibility("default"), maybe_unused]] bool HookHandle::UnhookAll() {
+  HookLocker locker;
+  ClearError();
+  return reinterpret_cast<HookHandleExt*>(this)->UnhookAllExt();
 }
 
 }  // namespace rv64hook

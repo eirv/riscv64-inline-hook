@@ -18,15 +18,19 @@
 
 #pragma once
 
+#include <pthread.h>
+
 #include <tuple>
 
-#include "rv64hook_internal.h"
-
-#ifdef __riscv
-#include "arch/riscv64/trampoline_riscv64.h"
-#endif
+#include "core/rv64hook_internal.h"
 
 namespace rv64hook {
+
+#if defined(__riscv)
+static constexpr uint8_t kMaxFirstTrampolineSize = 28;
+#elif defined(__aarch64__)
+static constexpr uint8_t kMaxFirstTrampolineSize = 48;
+#endif
 
 class HookHandleExt;
 
@@ -34,8 +38,14 @@ struct TrampolineData {
   [[maybe_unused]] HookHandleExt* root_handle;
   [[maybe_unused]] void* hook;
   [[maybe_unused]] void* backup;
+  [[maybe_unused]] void* (*getspecific)(pthread_key_t);
+  [[maybe_unused]] int (*setspecific)(pthread_key_t, const void*);
+  [[maybe_unused]] pthread_key_t tls_key;
   [[maybe_unused]] uint16_t post_handlers;
+  [[maybe_unused]] bool enabled;
 };
+
+static_assert(sizeof(pthread_key_t) == sizeof(int), "Bad pthread_key_t");
 
 class Trampoline {
  public:
@@ -50,6 +60,8 @@ class Trampoline {
   static std::tuple<void*, bool> AllocSecondTrampoline(func_t address);
 
   static TrampolineData* GetTrampolineData(void* trampoline);
+
+  [[gnu::always_inline]] static std::tuple<const void*, size_t> GetSecondTrampoline();
 
  private:
   static constexpr const char* kTag = "Trampoline";

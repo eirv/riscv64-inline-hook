@@ -20,6 +20,7 @@
 
 #include <map>
 
+#include "arch/common/handle_offset.h"
 #include "arch/common/trampoline.h"
 #include "rv64hook_internal.h"
 
@@ -37,7 +38,7 @@ class HookInfo {
   void* relocated;
   uint16_t handle_count;
   uint8_t function_backup_size;
-  uint8_t function_backup[kMaxBackupSize];
+  uint8_t function_backup[kMaxFirstTrampolineSize];
 
   static HookInfo* Lookup(func_t func);
 
@@ -58,12 +59,13 @@ class HookInfo {
   void Unhook(bool initialized = true);
 
  private:
-  static std::map<func_t, HookInfo> hooks_;
+  static std::map<func_t, HookInfo*> hooks_;
 };
 
 class HookHandleExt : public HookHandle {
  public:
-  HookHandleExt(func_t address,
+  HookHandleExt(HookInfo* info,
+                func_t address,
                 func_t hook,
                 RegisterHandler pre_handler,
                 RegisterHandler post_handler,
@@ -72,13 +74,16 @@ class HookHandleExt : public HookHandle {
 
   bool SetEnabledExt(bool enabled);
 
+  bool SetEnabledAllExt(bool enabled);
+
   void UpdateBackup(func_t new_backup);
 
-  void UnhookExt();
+  bool UnhookExt();
 
-  void UnhookAllExt();
+  bool UnhookAllExt();
 
  private:
+  HookInfo* info_;
   HookHandleExt* previous_;
   [[maybe_unused]] HookHandleExt* next_;
   func_t hook_;
@@ -87,6 +92,17 @@ class HookHandleExt : public HookHandle {
   [[maybe_unused]] void* data_;
   func_t* user_backup_addr_;
   bool enabled_;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+  [[maybe_unused]] static void CheckOffsets() {
+    static_assert(offsetof(HookHandleExt, next_) == HookHandle_next);
+    static_assert(offsetof(HookHandleExt, pre_handler_) == HookHandle_pre_handler);
+    static_assert(offsetof(HookHandleExt, post_handler_) == HookHandle_post_handler);
+    static_assert(offsetof(HookHandleExt, data_) == HookHandle_data);
+    static_assert(offsetof(HookHandleExt, enabled_) == HookHandle_enabled);
+  }
+#pragma clang diagnostic pop
 
   friend class HookInfo;
 };

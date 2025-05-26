@@ -16,32 +16,31 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/mman.h>
-#include <unistd.h>
+#pragma once
 
 #include "arch/common/trampoline.h"
 #include "rv64hook.h"
 
 namespace rv64hook {
 
-[[gnu::visibility("default"), maybe_unused]] ScopedRWXMemory::ScopedRWXMemory(void* address,
-                                                                              int original_prot)
-    : prot_(original_prot) {
-  if (!address) {
-    address_ = nullptr;
-    return;
-  }
-  auto page_size = getpagesize();
-  address_ = __builtin_align_down(address, page_size);
-  size_ = __builtin_align_up(reinterpret_cast<uintptr_t>(address) + kMaxBackupSize, page_size) -
-          reinterpret_cast<uintptr_t>(address_);
-  if (mprotect(address_, size_, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-    address_ = nullptr;
-  }
-}
+class FunctionRecord {
+ public:
+  FunctionRecord(func_t address);
 
-[[gnu::visibility("default"), maybe_unused]] ScopedRWXMemory::~ScopedRWXMemory() {
-  if (address_) mprotect(address_, size_, prot_);
-}
+  bool IsModified();
+
+  int WriteTrampoline(func_t hook, func_t* backup);
+
+  void Unhook();
+
+ private:
+  func_t address_;
+  void* backup_trampoline_;
+  int16_t original_function_hash_;
+  uint8_t overwrite_size_;
+  uint8_t function_backup_[kMaxFirstTrampolineSize];
+
+  static int16_t ComputeHash(func_t address, size_t size);
+};
 
 }  // namespace rv64hook

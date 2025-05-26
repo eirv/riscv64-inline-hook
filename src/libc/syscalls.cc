@@ -16,43 +16,38 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
 #include <sys/mman.h>
+#include <syscall.h>
 
-#include <cstdint>
-
-#include "config.h"
+#include "libc.h"
 
 namespace rv64hook {
 
-#ifdef RV64HOOK_USE_SYSTEM_LIBC
+#if defined(__riscv)
 
-static inline void libc_memcpy(void* dest, const void* src, size_t count) {
-  memcpy(dest, src, count);
+void libc_mprotect(const void* addr, size_t size, int prot) {
+  register int nr asm("a7") = __NR_mprotect;
+  register auto arg0 asm("a0") = addr;
+  register auto arg1 asm("a1") = size;
+  register auto arg2 asm("a2") = prot;
+  asm volatile("ecall" : "=r"(arg0) : "r"(nr), "r"(arg0), "r"(arg1), "r"(arg2));
 }
 
-static inline void libc_mprotect(const void* addr, size_t size, int prot) {
-  mprotect(addr, size, prot);
+#elif defined(__aarch64__)
+
+void libc_mprotect(const void* addr, size_t size, int prot) {
+  register int nr asm("w8") = __NR_mprotect;
+  register auto arg0 asm("x0") = addr;
+  register auto arg1 asm("x1") = size;
+  register auto arg2 asm("x2") = prot;
+  asm volatile("svc #0" : "=r"(arg0) : "r"(nr), "r"(arg0), "r"(arg1), "r"(arg2));
 }
 
 #else
 
-extern "C" {
-void __rv64hook_libc_memcpy_vext(void* dest, const void* src, size_t count);
+void libc_mprotect(const void* addr, size_t size, int prot) {
+  mprotect(const_cast<void*>(addr), size, prot);
 }
-
-void __rv64hook_libc_memcpy_gc(void* dest, const void* src, size_t count);
-
-static inline void libc_memcpy(void* dest, const void* src, size_t count) {
-#if defined(__riscv) && USE_VECTOR_EXTENSION
-  __rv64hook_libc_memcpy_vext(dest, src, count);
-#else
-  __rv64hook_libc_memcpy_gc(dest, src, count);
-#endif
-}
-
-void libc_mprotect(const void* addr, size_t size, int prot);
 
 #endif
 

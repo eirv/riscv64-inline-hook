@@ -129,12 +129,12 @@ void* MmapImplOrDie(MmapImplArgs args) {
 }
 
 void MunmapOrDie(void* ptr, size_t size) {
-  int res = munmap(ptr, size);
+  [[maybe_unused]] int res = munmap(ptr, size);
   CHECK_EQ(res, 0);
 }
 
 void MprotectOrDie(void* ptr, size_t size, int prot) {
-  int res = mprotect(ptr, size, prot);
+  [[maybe_unused]] int res = mprotect(ptr, size, prot);
   CHECK_EQ(res, 0);
 }
 
