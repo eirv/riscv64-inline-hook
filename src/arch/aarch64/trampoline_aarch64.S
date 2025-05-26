@@ -149,9 +149,7 @@ ASM_FUNCTION_HIDDEN(trampoline)
 
 .L.store_lr_ext:
     .if USE_VECTOR_EXTENSION
-    vsetivli zero, 1, e64, m1, ta, ma
-    addi    TMP_GENERIC_REGISTER, sp, 8 * 1
-    vle64.v TMP_VECTOR_REGISTER, (TMP_GENERIC_REGISTER)
+    // TODO
     .else
     str     lr, [sp, #8 * 97]
     ldr     TMP_FLOAT_REGISTER, [sp, #8 * 97]
@@ -181,8 +179,7 @@ ASM_FUNCTION_HIDDEN(trampoline)
 
 .L.load_lr_ext:
     .if USE_VECTOR_EXTENSION
-    vsetivli zero, 1, e64, m1, ta, ma
-    vmv.x.s TMP_GENERIC_REGISTER, TMP_VECTOR_REGISTER
+    // TODO
     sd      TMP_GENERIC_REGISTER, (8 * 1)(sp)
     .else
     str     TMP_FLOAT_REGISTER, [sp, #8 * 97]
